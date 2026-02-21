@@ -14,6 +14,7 @@ import {
   Sparkles,
   ChevronDown,
   Plus,
+  ClipboardList,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-context";
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/", label: "Launch Center", icon: LayoutDashboard },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/leads", label: "Pipeline", icon: TrendingUp },
+  { href: "/quotes", label: "Quotes", icon: ClipboardList },
   { href: "/financials", label: "Financials", icon: FileText },
   { href: "/inventory", label: "Inventory", icon: Package },
   { href: "/customers", label: "Customers", icon: Users },

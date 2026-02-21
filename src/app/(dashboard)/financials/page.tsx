@@ -85,6 +85,8 @@ export default function FinancialsPage() {
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const [invoiceForm, setInvoiceForm] = useState({
     customerId: "",
@@ -120,6 +122,7 @@ export default function FinancialsPage() {
     setInvoiceForm({ customerId: "", dueDate: "", notes: "" });
     setLineItems([{ description: "", quantity: "1", unitPrice: "" }]);
     setSelectedInvoice(null);
+    setFormErrors({});
     setShowInvoiceDialog(true);
   }
 
@@ -135,6 +138,7 @@ export default function FinancialsPage() {
       unitPrice: String(i.unitPrice),
     })));
     setSelectedInvoice(invoice);
+    setFormErrors({});
     setShowInvoiceDialog(true);
   }
 
@@ -154,8 +158,16 @@ export default function FinancialsPage() {
   const invoiceTax = invoiceSubtotal * ((currentBusiness?.taxRate ?? 0) / 100);
   const invoiceTotal = invoiceSubtotal + invoiceTax;
 
+  function validateInvoice() {
+    const errs: Record<string, string> = {};
+    const hasItems = lineItems.some(i => i.description.trim() && parseFloat(i.unitPrice) > 0);
+    if (!hasItems) errs.items = "At least one line item with a description and price is required.";
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
   async function saveInvoice() {
-    if (!currentBusiness) return;
+    if (!currentBusiness || !validateInvoice()) return;
     setSaving(true);
     try {
       const body = {
@@ -163,21 +175,62 @@ export default function FinancialsPage() {
         customerId: invoiceForm.customerId || null,
         dueDate: invoiceForm.dueDate || null,
         notes: invoiceForm.notes || null,
-        items: lineItems.filter(i => i.description).map(i => ({
+        items: lineItems.filter(i => i.description.trim()).map(i => ({
           description: i.description,
           quantity: parseFloat(i.quantity) || 1,
           unitPrice: parseFloat(i.unitPrice) || 0,
         })),
       };
-      const res = await fetch("/api/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) {
-        const saved = await res.json();
-        setInvoices(inv => [saved, ...inv]);
-        setShowInvoiceDialog(false);
+      if (selectedInvoice) {
+        const res = await fetch(`/api/invoices/${selectedInvoice.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setInvoices(inv => inv.map(i => i.id === updated.id ? updated : i));
+          setShowInvoiceDialog(false);
+        }
+      } else {
+        const res = await fetch("/api/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (res.ok) {
+          const saved = await res.json();
+          setInvoices(inv => [saved, ...inv]);
+          setShowInvoiceDialog(false);
+        }
       }
     } finally {
       setSaving(false);
     }
+  }
+
+  async function deleteInvoice(id: string) {
+    setDeleting(id);
+    try {
+      const res = await fetch(`/api/invoices/${id}`, { method: "DELETE" });
+      if (res.ok) setInvoices(inv => inv.filter(i => i.id !== id));
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  async function deleteExpense(id: string) {
+    setDeleting(id);
+    try {
+      const res = await fetch(`/api/expenses/${id}`, { method: "DELETE" });
+      if (res.ok) setExpenses(exp => exp.filter(e => e.id !== id));
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  function validateExpense() {
+    const errs: Record<string, string> = {};
+    if (!expenseForm.description.trim()) errs.description = "Description is required.";
+    if (!expenseForm.amount || parseFloat(expenseForm.amount) <= 0) errs.amount = "Amount must be greater than 0.";
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
   }
 
   async function updateInvoiceStatus(invoice: Invoice, status: string) {
@@ -191,7 +244,7 @@ export default function FinancialsPage() {
   }
 
   async function saveExpense() {
-    if (!currentBusiness) return;
+    if (!currentBusiness || !validateExpense()) return;
     setSaving(true);
     try {
       const body = { ...expenseForm, businessId: currentBusiness.id };
@@ -200,6 +253,7 @@ export default function FinancialsPage() {
         const saved = await res.json();
         setExpenses(exp => [saved, ...exp]);
         setShowExpenseDialog(false);
+        setFormErrors({});
         setExpenseForm({ description: "", amount: "", category: "general", date: new Date().toISOString().split("T")[0], vendor: "", notes: "" });
       }
     } finally {
@@ -358,6 +412,17 @@ export default function FinancialsPage() {
                             <Button variant="ghost" size="icon" onClick={() => openEditInvoice(inv)}>
                               <ChevronRight className="w-4 h-4" />
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-400 hover:text-red-600"
+                              onClick={() => deleteInvoice(inv.id)}
+                              disabled={deleting === inv.id}
+                            >
+                              {deleting === inv.id
+                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                : <Trash2 className="w-4 h-4" />}
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -369,6 +434,53 @@ export default function FinancialsPage() {
           </Card>
         )}
       </div>
+
+      {/* Expenses List */}
+      {expenses.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold text-gray-800">Expenses</h2>
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left py-3 px-4 font-semibold text-gray-500">Description</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-500">Category</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-500">Vendor</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-500">Date</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-500">Amount</th>
+                    <th className="py-3 px-4" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenses.map(exp => (
+                    <tr key={exp.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="py-3 px-4 font-medium text-gray-900">{exp.description}</td>
+                      <td className="py-3 px-4 text-gray-500 capitalize">{exp.category}</td>
+                      <td className="py-3 px-4 text-gray-500">{exp.vendor ?? "—"}</td>
+                      <td className="py-3 px-4 text-gray-500">{formatDate(exp.date)}</td>
+                      <td className="py-3 px-4 text-right font-semibold text-gray-900">{formatCurrency(exp.amount, currentBusiness.currency)}</td>
+                      <td className="py-3 px-4">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-400 hover:text-red-600"
+                          onClick={() => deleteExpense(exp.id)}
+                          disabled={deleting === exp.id}
+                        >
+                          {deleting === exp.id
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Trash2 className="w-4 h-4" />}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Invoice Dialog */}
       <Dialog open={showInvoiceDialog} onOpenChange={setShowInvoiceDialog}>
@@ -396,7 +508,9 @@ export default function FinancialsPage() {
             {/* Line Items */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Line Items</Label>
+                <Label>
+                  Line Items{formErrors.items && <span className="text-red-500 text-xs ml-2">{formErrors.items}</span>}
+                </Label>
                 <Button variant="ghost" size="sm" onClick={addLineItem}><Plus className="w-3 h-3 mr-1" />Add Item</Button>
               </div>
               <div className="space-y-2">
@@ -433,12 +547,10 @@ export default function FinancialsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowInvoiceDialog(false)}>Cancel</Button>
-            {!selectedInvoice && (
-              <Button onClick={saveInvoice} disabled={saving}>
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                Create Invoice
-              </Button>
-            )}
+            <Button onClick={saveInvoice} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {selectedInvoice ? "Save Changes" : "Create Invoice"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -449,13 +561,13 @@ export default function FinancialsPage() {
           <DialogHeader><DialogTitle>Add Expense</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label>Description *</Label>
+              <Label>Description *{formErrors.description && <span className="text-red-500 text-xs ml-2">{formErrors.description}</span>}</Label>
               <Input value={expenseForm.description} onChange={e => setExpenseForm(f => ({ ...f, description: e.target.value }))} placeholder="Steel pipe purchase" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Amount ($) *</Label>
-                <Input type="number" value={expenseForm.amount} onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+                <Label>Amount ($) *{formErrors.amount && <span className="text-red-500 text-xs ml-2">{formErrors.amount}</span>}</Label>
+                <Input type="number" min="0" value={expenseForm.amount} onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
               </div>
               <div className="space-y-1.5">
                 <Label>Category</Label>
