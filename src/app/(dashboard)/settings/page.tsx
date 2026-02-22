@@ -51,9 +51,10 @@ interface IntegrationDef {
 // Integration catalog with explicit build strategy rationale
 const INTEGRATIONS: IntegrationDef[] = [
   // ── Accounting ──────────────────────────────────────────────────────────────
-  // Strategy: Merge.dev unified API covers QBO + Xero + Wave in one integration.
-  // Accounting sync is complex (chart of accounts, tax codes, bank feeds) —
-  // not worth building native for each. Merge.dev ~$150/mo unlocks all.
+  // Strategy: Build native OAuth for each. QuickBooks = 62% US market share,
+  // non-negotiable. Xero = strong secondary (#2 internationally). Merge.dev
+  // ($650/mo minimum) is only worth it at scale — native OAuth is the right
+  // call for early stage where we control the full integration surface.
   {
     id: "quickbooks",
     name: "QuickBooks Online",
@@ -63,7 +64,7 @@ const INTEGRATIONS: IntegrationDef[] = [
     logo: "QB",
     logoColor: "bg-green-600",
     strategy: "oauth",
-    strategyLabel: "OAuth via Merge.dev",
+    strategyLabel: "Native OAuth (in development)",
     recommended: true,
     fields: [],
   },
@@ -76,12 +77,14 @@ const INTEGRATIONS: IntegrationDef[] = [
     logo: "Xe",
     logoColor: "bg-[#13B5EA]",
     strategy: "oauth",
-    strategyLabel: "OAuth via Merge.dev",
+    strategyLabel: "Native OAuth (in development)",
     fields: [],
   },
   // ── Payments ─────────────────────────────────────────────────────────────────
-  // Strategy: Build native. Stripe and Square both have excellent REST APIs and
-  // webhooks. A "Pay Now" link on invoices is high-value and simple to implement.
+  // Strategy: Build native for all three. PayPal = 43% market share (largest
+  // by reach), Stripe = 21% and preferred by tech-forward SMBs, Square = best
+  // for physical/hybrid businesses. All three have excellent API docs and
+  // webhooks. A "Pay Now" link on invoices drives immediate cash flow.
   {
     id: "stripe",
     name: "Stripe",
@@ -107,6 +110,34 @@ const INTEGRATIONS: IntegrationDef[] = [
         placeholder: "whsec_...",
         type: "password",
         hint: "Required for automatic invoice reconciliation. Stripe Dashboard → Webhooks.",
+      },
+    ],
+  },
+  {
+    id: "paypal",
+    name: "PayPal",
+    description: "Accept PayPal payments on invoices. Reaches customers who prefer PayPal.",
+    impact: "43% of SMB online payments go through PayPal — don't lose those sales.",
+    category: "Payments",
+    logo: "PP",
+    logoColor: "bg-blue-700",
+    strategy: "apikey",
+    strategyLabel: "Built native (API key)",
+    recommended: true,
+    fields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        placeholder: "AXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        type: "text",
+        hint: "PayPal Developer → My Apps & Credentials → your app → Client ID",
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        placeholder: "EJxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        type: "password",
+        hint: "PayPal Developer → My Apps & Credentials → your app → Secret",
       },
     ],
   },
@@ -566,13 +597,16 @@ export default function SettingsPage() {
           {/* Strategy callout */}
           <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 flex gap-3">
             <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-800 space-y-1">
+            <div className="text-sm text-blue-800 space-y-2">
               <p className="font-semibold">Integration strategy</p>
               <p>
-                <span className="font-medium">API key integrations</span> (Stripe, Square, Twilio, Slack, Mailchimp) are live — paste your key and connect.
-                {" "}<span className="font-medium">OAuth integrations</span> (QuickBooks, Xero, Google Calendar) are in development.
-                Accounting sync uses <span className="font-medium">Merge.dev</span> to cover QuickBooks + Xero with a single implementation.
-                Scheduling and payments are built natively.
+                <span className="font-medium">Live now —</span> API key integrations (Stripe, PayPal, Square, Twilio, Slack, Mailchimp): paste your key and connect instantly.
+              </p>
+              <p>
+                <span className="font-medium">In development —</span> OAuth integrations (QuickBooks, Xero, Google Calendar, Outlook): built natively so we own the full sync surface. QuickBooks has 62% US market share; Stripe + PayPal cover 65% of online payments. These are the highest-ROI connections.
+              </p>
+              <p className="text-blue-700">
+                We evaluated Merge.dev and Apideck (unified API platforms) but both cost $600–650/mo minimum — not the right fit at this stage. Native OAuth costs zero and gives us more control.
               </p>
             </div>
           </div>
